@@ -1,0 +1,58 @@
+\section{提案手法}
+提案手法の全体像を\textbf{図\ref{fig:overview}}に示す．
+
+\subsection{仕様差分グラフ}
+提案手法では，REST API仕様を版ごとに正規化した知識グラフとして構築する．エンドポイント，リクエストヘッダ，パラメータ，認証方式などを個別のノードとして保持し，それらの依存関係を辺で結ぶ．
+
+その上で，旧仕様要素から新仕様要素への対応を差分ノードとして定義する．差分ノードは旧仕様要素へのFROM辺と，新仕様要素へのTO辺を持つ．たとえばSwitchBot API\cite{switchbot}のv1.0からv1.1への移行では，エンドポイントの版更新と認証方式の変更がそれぞれ1つの差分ノードとなる．
+
+差分ノードの生成において人手で記述するのは，旧仕様要素と新仕様要素の対応を宣言した移行表の2エントリのみである．エンドポイント単位の差分ノードは，この宣言と仕様グラフから自動生成される．
+
+\subsection{リクエスト事実の抽出と差分の検索}
+誤用コードからは，HTTPメソッド，パス，リクエストヘッダ，クエリパラメータ，リクエストボディのキー，認証に関わる記述をリクエスト事実として抽出する．抽出は言語非依存の正規表現に基づき，1つのコードから複数の事実が得られる．
+
+各事実に対し，まず旧仕様側のシグネチャとの決定的なマッチを試みる．仕様がパスパラメータを\verb|{deviceId}|と記述するのに対しコードは変数展開や具体値を用いるため，セグメント単位でパスパラメータをワイルドカードとして照合する．また，コードが既に新しい版のパスを用いている場合はその事実に旧版の差分を適用しない．
+
+マッチが得られなかった事実についてのみ，差分ノードの埋め込みに対するベクトル検索へ回す．検索対象は差分ノードのみであり，仕様ノードを直接検索することはない．
+
+\subsection{対応付け先の展開と差分カード}
+検索された差分ノードについて，TO辺の先からのみ1〜2ホップの探索を行い，新仕様で必要となる要素を収集する．探索する関係は，認証方式の要求，要素間の依存，および値の生成手続きである．SwitchBot APIの例では，v1.1のエンドポイントから認証方式ノードへ辿り，そこから\textit{sign}，\textit{nonce}，\textit{t}の各ヘッダノードと，HMAC-SHA256による署名生成の手続きノードが引き寄せられる．旧仕様側を展開しないのは，旧仕様のみを与えると精度が低下するという先行実験の知見に基づく．
+
+得られた差分ノードと展開結果は，事実ごとに差分カードとして整形する．差分カードは，変更の要約，旧仕様と新仕様を対比する表，新仕様で必要となる要素の一覧から成る．同一の差分が複数の事実に対応する場合は本文を一度だけ展開し，二度目以降は参照に置き換える．
+
+
+
+
+
+\begin{figure}[t]
+\centering
+\scriptsize
+\begin{tikzpicture}[
+  node distance=3.2mm,
+  box/.style={draw, rounded corners=1pt, align=center, inner sep=2.2pt, font=\scriptsize},
+  gnode/.style={draw, fill=black!6, align=center, inner sep=2.2pt, font=\scriptsize},
+  arr/.style={-{Latex[length=1.6mm]}, thin}
+]
+\node[box] (code) {誤用コード};
+\node[box, below=of code] (fact) {リクエスト事実\\{\ttfamily GET /v1.0/devices/\{id\}/status}};
+\node[gnode, below=of fact] (delta) {\textbf{差分ノード}\\エンドポイント v1.0 $\rightarrow$ v1.1};
+\node[gnode, below=of delta] (to) {認証方式 (v1.1)};
+\node[gnode, below=of to] (need) {\ttfamily sign / nonce / t ヘッダ\\HMAC-SHA256 署名手続き};
+\node[box, below=of need] (card) {差分カード};
+\node[box, below=of card] (llm) {LLM $\rightarrow$ パッチ};
+
+\draw[arr] (code) -- node[right, font=\tiny] {抽出} (fact);
+\draw[arr] (fact) -- node[right, font=\tiny] {決定的マッチ / ベクトル検索} (delta);
+\draw[arr] (delta) -- node[right, font=\tiny] {TO辺} (to);
+\draw[arr] (to) -- node[right, font=\tiny] {1〜2ホップ展開} (need);
+\draw[arr] (need) -- node[right, font=\tiny] {整形} (card);
+\draw[arr] (card) -- (llm);
+
+\begin{scope}[on background layer]
+  \node[draw, dashed, fit=(delta)(to)(need), inner sep=2.5pt] (g) {};
+\end{scope}
+\node[font=\tiny, anchor=south east] at (g.north east) {仕様差分グラフ};
+\end{tikzpicture}
+\caption{提案手法の全体像}
+\label{fig:overview}
+\end{figure}

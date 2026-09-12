@@ -1,0 +1,147 @@
+% =======ここから削除禁止========= %
+\documentclass[uplatex,dvipdfmx,a4paper,twocolumn,base=12pt,jbase=12pt,ja=standard]{bxjsarticle}
+\usepackage{ase}
+\usepackage{lmodern}
+\usepackage[dvipdfmx]{graphicx}
+\usepackage{enumitem}
+
+\usepackage{geometry}
+\geometry{reset, noheadfoot, top=25truemm, bottom=35truemm, hmargin=20truemm, footskip=15mm}
+
+\newcommand{\HeaderLeftTitle}{}
+\newcommand{\HeaderLeftYear}{}
+\newcommand{\setHeaderLeft}[2]{%
+  \renewcommand{\HeaderLeftTitle}{#1}%
+  \renewcommand{\HeaderLeftYear}{#2}%
+}
+% =======ここまで削除禁止========= %
+% 以降パッケージやコマンド追加は自由に行ってください
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mdframed}
+
+% =======！！修正確認！！========= %
+% 発表の種類（M1テーマ報告会，M2テーマ報告会，修論発表会など）と年度を指定してください
+\setHeaderLeft{M1テーマ報告会}{2025}
+% =======！！修正確認！！========= %
+
+% =======以下，タイトルと本文========= %
+
+\title{REST API誤用に対する自動修正のための\\
+データベース拡張RAGアーキテクチャの比較調査}{}
+\author{}{井上　翔瑛}{Shoei Inoue}
+
+
+\begin{document}
+\maketitle
+
+\section{はじめに}
+近年，普及が加速しているIoTデバイスの多くは\cite{makhshari2021iot}，REST (Representational State Transfer)アーキテクチャスタイル\cite{fielding2000architectural}に基づいたウェブAPIであるREST APIを提供している．これにより，クライアント開発者は，REST APIを提供するプロバイダが管理するリソースに対して，HTTPリクエストを送信することでアクセスすることができる．
+適切な情報を取得するにはAPI仕様を満たす必要があるが，レスポンスに含まれるエラーコードやエラーメッセージは情報が少なく，エラーの発生箇所を特定する内容は書かれていない場合が多いため，繰り返し送受信をしなければならないという課題がある．
+そこで我々の研究グループでは，REST APIを対象としたLLMによる自動バグ修正手法\cite{yamagishi2025automated}を提案している．この手法では，REST API仕様とクライアントのソースコードから誤用箇所を検出して，LLMへ入力することで自動修正を行うアプローチを取っている．しかし，先行研究ではプロンプトに誤用箇所を含めているものの，修正に必要な情報は十分に含まれていない．そのため，LLMが学習していないREST API仕様に対して正確な修正をすることは難しい．
+そこで本研究では，クライアント開発におけるREST API誤用を対象に，RAG (Retrieval Augmented Generation) \cite{lewis2020retrieval}と呼ばれる手法を用いて，
+自動修正する手法を複数検証し，それらの精度を比較することで最も良い構成を明らかにする．
+
+
+
+
+\section{調査手法}
+本研究では，REST API誤用を自動修正するためにRAGを用いた手法を複数構成した．
+RAG手法は，以下の手順で構築する．
+% \input{fig-tab/rag-img}
+
+\subsection{RAG手法の手順}
+
+\input{fig-tab/config}
+\begin{description}
+    \item[手順1. ] 外部情報の準備 \\
+    GitHubやウェブで公開されているオープンソースから対象となるREST API仕様のリンクを収集する．そのリンクを基に，スクレイピングすることによって仕様情報に関するテキストデータを取得する．
+    次に，テキストデータをベクトル化する．ベクトル化とは，テキストデータを数値表現に変換することであり，対象関数に関連する情報を意味的に検索することが可能になる．
+    前処理として，取得したテキストデータをチャンクと呼ばれる小さなテキスト片に分割する．これにより，それぞれが独立して意味を持つようになり，検索時に正確な関連性を持った情報を取得しやすくなる．
+    続いて，埋め込みモデルを用いて分割したテキスト片にベクトル化処理を行う．
+    本手法では，テキストデータの分割をLlamaIndexで行い，ベクトル化処理をOpenAI社が提供しているtext-embedding-3-largeで行った．
+    最後に，ベクトル化を行ったテキストデータをデータベースに格納する．
+    データベースの各構成は\textbf{表\ref{config}}に示す．
+
+    \item[手順2. ] 関連仕様の検索 \\
+    はじめに，GitHubからREST API誤用を含む対象関数を抽出する．
+    対象関数はGitHub APIを用いてSwitchBot APIとFitbit APIのAPI誤用を含むものを抽出した．
+    また，対象関数のベクトル化処理を行う．このプロセスにより，対象関数とデータベースに格納したREST API仕様との意味検索をすることが可能になる．
+    続いて，ベクトル化した対象関数を基にデータベースに対して意味検索を行い，関連するテキスト片を抽出する．テキスト片の抽出数は，上位60件で調査した．
+    
+    \item[手順3. ] 自動修正 \\
+    手順2で抽出した結果を基に，LLMへ入力するプロンプトを作成する．
+    このプロンプトは，プロンプトエンジニアリングガイド\cite{prompt}を参考に設計した．
+    \newpage
+    背景情報や実施すべき内容，データベースから抽出した情報と対象関数を記述する．
+    ここでは，データベースから抽出した情報が持つ意味によってプロンプトの書き方を変更している．
+    最後に，LLMが生成する回答の形式を記述する．
+    詳細はGitHubリポジトリ\footnotemark{}を参照されたい．
+    本手法では，OpenAI社が提供しているgpt-4oへ入力することで回答を生成し，評価を行った．
+\end{description}
+
+\addtocounter{footnote}{-1}
+\footnotetext{1つのデータベースに非推奨仕様と最新仕様を格納}
+\stepcounter{footnote}
+\footnotetext{\url{https://github.com/shonsukee/rag-research}}
+
+
+\subsection{評価用データセットの作成}
+\input{fig-tab/datasets}
+調査に用いたデータセットを\textbf{表\ref{tab3}}に示す．リクエストヘッダはRH，エンドポイントはEPという命名規則に従って記述している．これらのデータセットは，我々がGitHub APIによって収集したデータセットである．SwitchBot APIもしくはFitbit APIのどちらかを使用しているリポジトリから，すでにクローズされたコミット，イシュー，プルリクエストを収集した．収集手順を以下に示す．
+\begin{description}
+    \item[手順a. ] GitHub APIからリンクを収集 \\
+    まず，GitHub APIにクエリを入力して，ヒットしたリンクを収集する．その中から，基準に該当するものをプログラムと目視によって抽出した．
+    \item[手順b. ] 基準に該当するものを抽出 \\
+    コミットとプルリクエストは，修正後に最新のREST API仕様へ変更されたものを基準とした．イシューは，コメント内に非推奨のREST API仕様に基づいたプログラムが含まれているもの，もしくはすでにクローズされたコミットおよびプルリクエストのメンションがあるものを目視で抽出して，データセットとした．また，このデータセットを準備するための作業は全て筆者が行った．
+\end{description}
+
+
+\subsection{評価方法}
+LLMは実行回数によって修正の揺れが生じる可能性がある．それを防ぐために下記の式を用いることで，データセットを評価した．
+\[
+\text{修正成功数} = \frac{\text{パッチ生成の成功回数}}{\text{データセット数}}
+\]
+データセット1件あたり5回ずつ実行し，パッチ生成の成功回数を，実行回数である5で割ることで修正成功数を算出する．また，既存研究\cite{liu2020efficiency}や既存研究で用いられたGitHubリポジトリ\footnote{\url{https://github.com/SerVal-DTF/APR-Efficiency}}を参考にして，既存研究で提案されているルールのどれかに該当するものを成功と評価した．
+\input{fig-tab/results}
+
+本研究では以下のRQを設定した．
+\begin{description}
+    \item [RQ:] {\bf RAGのデータベース構成を変更することによる最適な組み合わせはどれか？}\\
+    RAGにおけるデータベースの数を増減させて，REST API誤用の自動修正における最適な構成を調査する．
+\end{description}
+
+\section{調査結果}
+\subsection{RQの結果}
+2つのREST API誤用を含むデータセットにおいて，これらの手法を適用して評価を行った．調査結果は2.4節と同様の命名規則に従って\textbf{表\ref{tab5}}に示す．
+ベースラインであるパターンAでは修正率が54.3\%となった．
+非推奨仕様のみをプロンプトに含むパターンB, Fでは修正率が著しく低下した．
+全体を通して，データベースの数を増やすことでREST API誤用に対する修正率を向上させることができた．最も修正率が高いのは，データベースを4つに構成したパターンJであり，今回のベースラインであるパターンAと比較して，34.3\%修正率を向上させることができた．
+
+
+
+
+
+
+\begin{mdframed}[linewidth=1pt,linecolor=black]{RQへの回答：}
+データベースの数を増やすほど修正率が上昇し，4個に構成する場合が最も高く88.6\%修正できた．
+\end{mdframed}
+
+
+\subsection{考察}
+
+修正に失敗した原因は，複数のバグを発見できなかったことや1つのバグを発見して終了したことなどが考えられる．また，LLMはプロンプトに含まれている情報のみを利用して回答を行い，過去の学習データを利用しなかったことが修正率の低下につながったと考えられる．
+
+今回検証した全構成の中で，リクエストヘッダとエンドポイントの複数バグが混在したデータセットに対して，パターンH, J, Kの修正率が高くなるという結果になった．この3パターンの共通点として最新仕様の中からコード片を抽出して与えることが挙げられる．したがって複数バグに対して最新仕様のコード片をプロンプトに含めて，自動修正することが有効であると考えられる．
+
+
+
+今後の課題として，プロンプトに挿入するREST API仕様のテキスト片をコードと自然言語で分割して渡すことにより，対応関係が失われる問題がある．そのため，対応づいた非推奨仕様と最新仕様のセットを取得するような仕組みを構築することで，さらなる修正率向上に寄与すると考えている．
+
+
+\bibliographystyle{junsrt}
+\bibliography{reference}
+
+
+\end{document}

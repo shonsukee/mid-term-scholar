@@ -1,0 +1,39 @@
+% =======ここから削除禁止========= %
+\documentclass[uplatex,dvipdfmx,a4paper,twocolumn,base=12pt,jbase=12pt,ja=standard]{bxjsarticle}
+\usepackage{ase}
+\usepackage{lmodern}
+\usepackage[dvipdfmx]{graphicx}
+
+\usepackage{geometry}
+\geometry{reset, noheadfoot, top=30truemm, bottom=25truemm, hmargin=20truemm}
+% =======ここまで削除禁止========= %
+% 以降パッケージやコマンド追加は自由に行ってください
+\usepackage{enumitem}
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{mdframed}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, fit, backgrounds}
+
+% 空欄の{}は削除しないでください
+\title{REST API仕様の差分グラフを用いた\\
+API誤用の自動修正}{}
+\author{}{井上　翔瑛}{Shoei Inoue}
+\newcommand{\AcademicYear}{2026年度}
+\newcommand{\setAcademicYear}[1]{\renewcommand{\AcademicYear}{#1}}
+
+\begin{document}
+\maketitle
+
+\input{sections/1}
+\input{sections/2}
+\input{sections/3}
+\input{sections/4}
+\input{sections/5}
+
+
+\bibliographystyle{junsrt}
+\bibliography{reference}
+
+\end{document}
